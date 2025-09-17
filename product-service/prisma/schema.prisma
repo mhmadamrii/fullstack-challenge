@@ -21,3 +21,11 @@ model Product {
   quantity  Int
   createdAt DateTime @default(now())
 }
+
+model Order {
+  id         String   @id @default(uuid())
+  productId  String
+  totalPrice Float
+  status     String
+  createdAt  DateTime @default(now())
+}
