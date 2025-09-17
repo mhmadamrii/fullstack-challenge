@@ -11,6 +11,11 @@ export class ProductController {
     return this.productService.getAllProducts();
   }
 
+  @Get('no-cache')
+  async getProductsWithoutCache() {
+    return this.productService.getAllProductsWithoutCache();
+  }
+
   @Get(':id')
   async getProductById(@Param('id') id: string) {
     return this.productService.getProductById(id);
@@ -20,5 +25,11 @@ export class ProductController {
   @HttpCode(201)
   async createProduct(@Body() createProductDto: CreateProductDto) {
     return this.productService.createProduct(createProductDto);
+  }
+
+  @Post('no-cache')
+  @HttpCode(201)
+  async createProductWithoutCache(@Body() createProductDto: CreateProductDto) {
+    return this.productService.createProductWithoutCache(createProductDto);
   }
 }

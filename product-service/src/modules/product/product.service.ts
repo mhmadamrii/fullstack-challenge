@@ -1,20 +1,53 @@
-import { Injectable } from "@nestjs/common";
-import { CreateProductDto } from "./product.dto";
-import { PrismaService } from "src/prisma.service";
+import { Injectable, Inject } from '@nestjs/common';
+import { CreateProductDto } from './product.dto';
+import { PrismaService } from 'src/prisma.service';
+import type { RedisClientType } from 'redis';
+import * as amqp from 'amqplib';
 
 @Injectable()
 export class ProductService {
-  constructor(private prisma: PrismaService){}
+  constructor(
+    private prisma: PrismaService,
+    @Inject('REDIS_CLIENT') private redis: RedisClientType,
+    @Inject('RABBITMQ_CHANNEL') private readonly channel: amqp.Channel,
+  ) {}
 
   async createProduct(dto: CreateProductDto) {
-    return this.prisma.product.create({data: dto})
+    const newProduct = await this.prisma.product.create({ data: dto });
+    await this.redis.del('products');
+
+    const payload = Buffer.from(JSON.stringify(newProduct));
+    await this.channel.publish('events', 'product.created', payload);
+    return newProduct;
   }
 
   async getAllProducts() {
-    return this.prisma.product.findMany()
+    const cachedProducts = await this.redis.get('products');
+    console.log('cachedProducts', cachedProducts);
+    if (cachedProducts) {
+      return JSON.parse(cachedProducts);
+    }
+
+    const products = await this.prisma.product.findMany();
+    await this.redis.set('products', JSON.stringify(products));
+    return products;
   }
 
   async getProductById(id: string) {
-    return this.prisma.product.findUnique({ where: { id } });
+    const cachedProduct = await this.redis.get(`product_${id}`);
+    if (cachedProduct) {
+      return JSON.parse(cachedProduct);
+    }
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    await this.redis.set(`product_${id}`, JSON.stringify(product));
+    return product;
+  }
+
+  async createProductWithoutCache(dto: CreateProductDto) {
+    return this.prisma.product.create({ data: dto });
+  }
+
+  async getAllProductsWithoutCache() {
+    return this.prisma.product.findMany();
   }
 }

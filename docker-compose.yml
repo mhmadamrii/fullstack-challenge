@@ -6,43 +6,44 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgres://user:password@db:5432/dbname
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
-      - REDIS_URL=redis://redis:6379
+      DATABASE_URL: postgresql://neondb_owner:npg_Ac2HJOG3vLNE@ep-plain-frog-a1wjnn64-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+      REDIS_URL: rediss://default:58Kk5jKKus5LAj32N6iFAW7rE4YYJIsJ@redis-11174.crce194.ap-seast-1-1.ec2.redns.redis-cloud.com:11174
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      REDIS_HOST: redis-11174.crce194.ap-seast-1-1.ec2.redns.redis-cloud.com
+      REDIS_PORT: 11174
+      REDIS_CLIENT_PASS: 58Kk5jKKus5LAj32N6iFAW7rE4YYJIsJ
     depends_on:
-      - db
       - rabbitmq
-      - redis
     networks:
       - app-network
 
-  order-service:
-    build: ./order-service
-    ports:
-      - "8080:8080"
-    environment:
-      - DATABASE_URL=postgres://user:password@db:5432/dbname
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
-      - REDIS_URL=redis://redis:6379
-    depends_on:
-      - db
-      - rabbitmq
-      - redis
-    networks:
-      - app-network
+  # order-service:
+  #   build: ./order-service
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     DATABASE_URL: postgres://user:password@db:5432/dbname
+  #     REDIS_URL: redis://redis:6379
+  #     RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+  #   depends_on:
+  #     - db
+  #     - rabbitmq
+  #     - redis
+  #   networks:
+  #     - app-network
 
-  db:
-    image: postgres:16-alpine
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=dbname
-    volumes:
-      - db-data:/var/lib/postgresql/data
-    networks:
-      - app-network
+  # db:
+  #   image: postgres:16-alpine
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     POSTGRES_USER: user
+  #     POSTGRES_PASSWORD: password
+  #     POSTGRES_DB: dbname
+  #   volumes:
+  #     - db-data:/var/lib/postgresql/data
+  #   networks:
+  #     - app-network
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -52,12 +53,12 @@ services:
     networks:
       - app-network
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    networks:
-      - app-network
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   networks:
+  #     - app-network
 
 networks:
   app-network:
