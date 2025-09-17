@@ -37,3 +37,32 @@ func (h *Handlers) CreateOrder(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusCreated).JSON(order)
 }
+
+func (h *Handlers) GetOrdersByProductID(c *fiber.Ctx) error {
+	productID := c.Params("product_id")
+	if productID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "product_id is required",
+		})
+	}
+
+	orders, err := h.orderService.GetOrdersByProductID(productID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(orders)
+}
+
+func (h *Handlers) GetAllProducts(c *fiber.Ctx) error {
+	products, err := h.orderService.GetAllProducts()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(products)
+}
