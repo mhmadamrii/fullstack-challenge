@@ -1,1 +1,67 @@
-test
+version: "3.8"
+
+services:
+  product-service:
+    build: ./product-service
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgres://user:password@db:5432/dbname
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - rabbitmq
+      - redis
+    networks:
+      - app-network
+
+  order-service:
+    build: ./order-service
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://user:password@db:5432/dbname
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - rabbitmq
+      - redis
+    networks:
+      - app-network
+
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=dbname
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  db-data:

@@ -2,17 +2,17 @@ Big Picture Flow
 
 We want:
 
-Create product → store in DB → cache on read → publish event.
+- Create product → store in DB → cache on read → publish event.
 
-Create order → validate product via product-service → store in DB → publish event.
+- Create order → validate product via product-service → store in DB → publish event.
 
-Consume order events → product-service reduces stock → order-service logs/async tasks.
+- Consume order events → product-service reduces stock → order-service logs/async tasks.
 
-Redis + RabbitMQ glue both services.
+- Redis + RabbitMQ glue both services.
 
-Docker Compose ties everything up.
+- Docker Compose ties everything up.
 
-Unit tests + load tests.
+- Unit tests + load tests.
 
 # Product Service
 
