@@ -47,12 +47,17 @@ func NewService() *Service {
 		log.Fatalf("failed to connect database: %v", err)
 	}
 
+	err = db.AutoMigrate(&models.Order{})
+	if err != nil {
+		log.Fatalf("failed to migrate database: %v", err)
+	}
+
 	// Redis
 	redisAddr := fmt.Sprintf("%s:%s", os.Getenv("REDIS_HOST"), os.Getenv("REDIS_PORT"))
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     redisAddr,
 		Password: os.Getenv("REDIS_CLIENT_PASS"),
-		DB:       0, // use default DB
+		DB:       0,
 	})
 
 	// RabbitMQ
@@ -93,7 +98,6 @@ func (s *Service) CreateOrder(productID string, quantity int) (*models.Order, er
 		return nil, err
 	}
 
-	// 2. Create Order
 	order := &models.Order{
 		ID:         uuid.New().String(),
 		ProductID:  productID,
@@ -143,6 +147,7 @@ func (s *Service) publishOrderCreated(order *Order) error {
 }
 
 func (s *Service) publishOrderCreatedV2(order *models.Order) error {
+	fmt.Println("Attempting to publish order.created event")
 	body, err := json.Marshal(order)
 	if err != nil {
 		return err
@@ -164,7 +169,6 @@ func (s *Service) GetOrdersByProductID(productID string) ([]*Order, error) {
 	cacheKey := "orders:product:" + productID
 	ctx := context.Background()
 
-	// Check cache first
 	cachedOrders, err := s.redisClient.Get(ctx, cacheKey).Result()
 	if err == nil {
 		var orders []*Order
@@ -173,8 +177,6 @@ func (s *Service) GetOrdersByProductID(productID string) ([]*Order, error) {
 		}
 	}
 
-	// If not in cache, fetch from a dummy source for now
-	// In a real application, you would fetch this from a database
 	orders := []*Order{
 		{ID: "order1", ProductID: productID, Quantity: 1},
 		{ID: "order2", ProductID: productID, Quantity: 2},
@@ -194,7 +196,6 @@ func (s *Service) GetAllProducts() ([]*Product, error) {
 	cacheKey := "products:all"
 	ctx := context.Background()
 
-	// Check cache first
 	cachedProducts, err := s.redisClient.Get(ctx, cacheKey).Result()
 	if err == nil {
 		var products []*Product
@@ -203,7 +204,6 @@ func (s *Service) GetAllProducts() ([]*Product, error) {
 		}
 	}
 
-	// If not in cache, fetch from product-service
 	resp, err := s.httpClient.Get("http://localhost:3000/products")
 	if err != nil {
 		return nil, err
@@ -219,7 +219,6 @@ func (s *Service) GetAllProducts() ([]*Product, error) {
 		return nil, err
 	}
 
-	// Cache the result
 	productsJSON, err := json.Marshal(products)
 	if err == nil {
 		s.redisClient.Set(ctx, cacheKey, productsJSON, 10*time.Minute)
