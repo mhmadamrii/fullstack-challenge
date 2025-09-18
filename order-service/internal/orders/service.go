@@ -33,10 +33,11 @@ type Product struct {
 }
 
 type Service struct {
-	db              *gorm.DB
-	httpClient      *http.Client
-	redisClient     *redis.Client
-	rabbitmqChannel *amqp091.Channel
+	db                *gorm.DB
+	httpClient        *http.Client
+	redisClient       *redis.Client
+	rabbitmqChannel   *amqp091.Channel
+	productServiceURL string
 }
 
 func NewService() *Service {
@@ -44,21 +45,23 @@ func NewService() *Service {
 	dsn := os.Getenv("DATABASE_URL")
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("failed to connect database: %v", err)
+		log.Fatalf("❌ Failed to connect database: %v", err)
 	}
+	log.Println("✅ Connected to Postgres")
 
 	err = db.AutoMigrate(&models.Order{})
 	if err != nil {
-		log.Fatalf("failed to migrate database: %v", err)
+		log.Fatalf("❌ Failed to migrate database: %v", err)
 	}
+	log.Println("✅ Database migration complete")
 
 	// Redis
-	redisAddr := fmt.Sprintf("%s:%s", os.Getenv("REDIS_HOST"), os.Getenv("REDIS_PORT"))
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: os.Getenv("REDIS_CLIENT_PASS"),
-		DB:       0,
-	})
+	opt, err := redis.ParseURL(os.Getenv("REDIS_URL"))
+	if err != nil {
+		log.Fatalf("failed to parse redis url: %v", err)
+	}
+	log.Println("✅ Redis connected successfully")
+	rdb := redis.NewClient(opt)
 
 	// RabbitMQ
 	conn, err := amqp091.Dial(os.Getenv("RABBITMQ_URL"))
@@ -70,16 +73,22 @@ func NewService() *Service {
 		log.Fatalf("Failed to open a channel: %s", err)
 	}
 
+	productServiceURL := os.Getenv("PRODUCT_SERVICE")
+	if productServiceURL == "" {
+		productServiceURL = "http://localhost:3000"
+	}
+
 	return &Service{
-		db:              db,
-		httpClient:      &http.Client{},
-		redisClient:     rdb,
-		rabbitmqChannel: ch,
+		db:                db,
+		httpClient:        &http.Client{},
+		redisClient:       rdb,
+		rabbitmqChannel:   ch,
+		productServiceURL: productServiceURL,
 	}
 }
 
 func (s *Service) CreateOrder(productID string, quantity int) (*models.Order, error) {
-	resp, err := s.httpClient.Get("http://localhost:3000/products/" + productID)
+	resp, err := s.httpClient.Get(s.productServiceURL + "/products/" + productID)
 	if err != nil {
 		return nil, errors.New("failed to contact product-service")
 	}
@@ -192,7 +201,6 @@ func (s *Service) GetOrdersByProductID(productID string) ([]*Order, error) {
 }
 
 func (s *Service) GetAllProducts() ([]*Product, error) {
-	fmt.Println("What the fuck?")
 	cacheKey := "products:all"
 	ctx := context.Background()
 
@@ -204,7 +212,7 @@ func (s *Service) GetAllProducts() ([]*Product, error) {
 		}
 	}
 
-	resp, err := s.httpClient.Get("http://localhost:3000/products")
+	resp, err := s.httpClient.Get(s.productServiceURL + "/products")
 	if err != nil {
 		return nil, err
 	}
