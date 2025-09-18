@@ -20,8 +20,6 @@ import (
 	"github.com/mhmadamrii/order-service/internal/models"
 )
 
-
-
 type Product struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
@@ -114,6 +112,9 @@ func (s *Service) CreateOrder(productID string, quantity int) (*models.Order, er
 		return nil, err
 	}
 
+	cacheKey := "orders:product:" + productID
+	s.redisClient.Del(context.Background(), cacheKey)
+
 	if err := s.publishOrderCreatedV2(order); err != nil {
 		log.Printf("Failed to publish order.created: %s", err)
 	}
@@ -189,7 +190,6 @@ func (s *Service) GetOrdersByProductID(productID string) ([]*models.Order, error
 		return nil, err
 	}
 
-	// Cache the result
 	ordersJSON, err := json.Marshal(orders)
 	if err == nil {
 		s.redisClient.Set(ctx, cacheKey, ordersJSON, 10*time.Minute)
