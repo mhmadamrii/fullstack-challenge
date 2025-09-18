@@ -9,5 +9,5 @@ export class CreateProductDto {
 
   @IsInt()
   @Min(0)
-  quantity: number;
+  qty: number;
 }

@@ -32,7 +32,7 @@ func main() {
 	})
 
 	app.Post("/orders", orderHandlers.CreateOrder)
-	app.Get("/orders/:product_id", orderHandlers.GetOrdersByProductID)
+	app.Get("/orders/:productId", orderHandlers.GetOrdersByProductID)
 	app.Get("/products", orderHandlers.GetAllProducts)
 
 	log.Printf("Server listening on port %s", port)

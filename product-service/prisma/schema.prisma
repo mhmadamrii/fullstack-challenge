@@ -18,7 +18,7 @@ model products {
   id        String   @id @default(uuid())
   name      String
   price     Float
-  quantity  Int
+  qty       Int
   createdAt DateTime @default(now())
 }
 

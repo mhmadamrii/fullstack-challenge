@@ -16,7 +16,7 @@ func NewHandlers(orderService *orders.Service) *Handlers {
 }
 
 type createOrderRequest struct {
-	ProductID string `json:"product_id"`
+	ProductID string `json:"productId"`
 	Quantity  int    `json:"quantity"`
 }
 
@@ -39,10 +39,10 @@ func (h *Handlers) CreateOrder(c *fiber.Ctx) error {
 }
 
 func (h *Handlers) GetOrdersByProductID(c *fiber.Ctx) error {
-	productID := c.Params("product_id")
+	productID := c.Params("productId")
 	if productID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "product_id is required",
+			"error": "productId is required",
 		})
 	}
 

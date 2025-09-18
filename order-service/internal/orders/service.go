@@ -22,7 +22,7 @@ import (
 
 type Order struct {
 	ID        string `json:"id"`
-	ProductID string `json:"product_id"`
+	ProductID string `json:"productId"`
 	Quantity  int    `json:"quantity"`
 }
 

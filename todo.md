@@ -47,3 +47,18 @@ We want:
 - Check Redis first → fallback to DB → cache result.
 
 - Add RabbitMQ consumer for order.created → log the event (simulate background job).
+
+### Product-service Features
+
+- Create product
+- Get product by id (with caching — Redis)
+- Emit an event when a new product is created
+- Listen on order.created and reduce the qty related to productId:
+
+### Order-service Features
+
+- Create order (only if the productId exists — fetch product info from
+  product-service)
+- Get orders by product id (with caching — Redis)
+- Create order publish order.created events and process order with related product in background, connected to product.service
+- Create order can handle 1000 requests/seconds (test with k6.io). Than mean in 1000 orders/seconds
