@@ -10,7 +10,40 @@ export class ProductService {
     private prisma: PrismaService,
     @Inject('REDIS_CLIENT') private redis: RedisClientType,
     @Inject('RABBITMQ_CHANNEL') private readonly channel: amqp.Channel,
-  ) {}
+  ) {
+    this.listenToOrderCreated();
+  }
+
+  async listenToOrderCreated() {
+    this.channel.consume('order.created', async (msg) => {
+      if (msg) {
+        const order = JSON.parse(msg.content.toString());
+        console.log('Order created:', order);
+
+        const product = await this.prisma.products.findUnique({
+          where: { id: order.productId },
+        });
+
+        if (product) {
+          const newQty = product.qty - 1;
+          await this.prisma.products.update({
+            where: {
+              id: order.productId,
+            },
+            data: {
+              qty: newQty,
+            },
+          });
+
+          if (newQty === 0) {
+            console.log(`Product ${product.name} is out of stock`);
+          }
+        }
+
+        this.channel.ack(msg);
+      }
+    });
+  }
 
   async createProduct(dto: CreateProductDto) {
     const newProduct = await this.prisma.products.create({ data: dto });
