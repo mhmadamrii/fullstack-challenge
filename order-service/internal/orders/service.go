@@ -20,11 +20,7 @@ import (
 	"github.com/mhmadamrii/order-service/internal/models"
 )
 
-type Order struct {
-	ID        string `json:"id"`
-	ProductID string `json:"productId"`
-	Quantity  int    `json:"quantity"`
-}
+
 
 type Product struct {
 	ID    string `json:"id"`
@@ -125,7 +121,7 @@ func (s *Service) CreateOrder(productID string, quantity int) (*models.Order, er
 	return order, nil
 }
 
-func (s *Service) publishOrderCreated(order *Order) error {
+func (s *Service) publishOrderCreated(order *models.Order) error {
 	fmt.Println("Creating order.created event")
 	q, err := s.rabbitmqChannel.QueueDeclare(
 		"order.created", // name
@@ -174,21 +170,23 @@ func (s *Service) publishOrderCreatedV2(order *models.Order) error {
 	)
 }
 
-func (s *Service) GetOrdersByProductID(productID string) ([]*Order, error) {
+func (s *Service) GetOrdersByProductID(productID string) ([]*models.Order, error) {
 	cacheKey := "orders:product:" + productID
 	ctx := context.Background()
 
 	cachedOrders, err := s.redisClient.Get(ctx, cacheKey).Result()
 	if err == nil {
-		var orders []*Order
+		var orders []*models.Order
 		if err := json.Unmarshal([]byte(cachedOrders), &orders); err == nil {
+			log.Println("✅ Cache hit for orders:product:" + productID)
 			return orders, nil
 		}
 	}
 
-	orders := []*Order{
-		{ID: "order1", ProductID: productID, Quantity: 1},
-		{ID: "order2", ProductID: productID, Quantity: 2},
+	log.Println("🗑️ Cache miss for orders:product:" + productID)
+	var orders []*models.Order
+	if err := s.db.Where("\"productId\" = ?", productID).Find(&orders).Error; err != nil {
+		return nil, err
 	}
 
 	// Cache the result
@@ -208,10 +206,12 @@ func (s *Service) GetAllProducts() ([]*Product, error) {
 	if err == nil {
 		var products []*Product
 		if err := json.Unmarshal([]byte(cachedProducts), &products); err == nil {
+			log.Println("✅ Cache hit for " + cacheKey)
 			return products, nil
 		}
 	}
 
+	log.Println("🗑️ Cache miss for " + cacheKey)
 	resp, err := s.httpClient.Get(s.productServiceURL + "/products")
 	if err != nil {
 		return nil, err
