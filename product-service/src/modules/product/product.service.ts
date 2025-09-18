@@ -13,7 +13,7 @@ export class ProductService {
   ) {}
 
   async createProduct(dto: CreateProductDto) {
-    const newProduct = await this.prisma.product.create({ data: dto });
+    const newProduct = await this.prisma.products.create({ data: dto });
     await this.redis.del('products');
 
     const payload = Buffer.from(JSON.stringify(newProduct));
@@ -23,12 +23,13 @@ export class ProductService {
 
   async getAllProducts() {
     const cachedProducts = await this.redis.get('products');
-    console.log('cachedProducts', cachedProducts);
     if (cachedProducts) {
+      console.log('Cached products found ✅');
       return JSON.parse(cachedProducts);
     }
 
-    const products = await this.prisma.product.findMany();
+    console.log('Cached products missing 🗑️');
+    const products = await this.prisma.products.findMany();
     await this.redis.set('products', JSON.stringify(products));
     return products;
   }
@@ -38,16 +39,16 @@ export class ProductService {
     if (cachedProduct) {
       return JSON.parse(cachedProduct);
     }
-    const product = await this.prisma.product.findUnique({ where: { id } });
+    const product = await this.prisma.products.findUnique({ where: { id } });
     await this.redis.set(`product_${id}`, JSON.stringify(product));
     return product;
   }
 
   async createProductWithoutCache(dto: CreateProductDto) {
-    return this.prisma.product.create({ data: dto });
+    return this.prisma.products.create({ data: dto });
   }
 
   async getAllProductsWithoutCache() {
-    return this.prisma.product.findMany();
+    return this.prisma.products.findMany();
   }
 }

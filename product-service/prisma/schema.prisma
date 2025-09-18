@@ -14,7 +14,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Product {
+model products {
   id        String   @id @default(uuid())
   name      String
   price     Float
@@ -22,7 +22,7 @@ model Product {
   createdAt DateTime @default(now())
 }
 
-model Order {
+model orders {
   id         String   @id @default(uuid())
   productId  String
   totalPrice Float
