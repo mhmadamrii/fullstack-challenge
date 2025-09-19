@@ -43,6 +43,15 @@ func NewService() *Service {
 	}
 	log.Println("✅ Connected to Postgres")
 
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("❌ Failed to get generic DB: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(20)
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+	log.Println("✅ DB connection pool configured")
+
 	err = db.AutoMigrate(&models.Order{})
 	if err != nil {
 		log.Fatalf("❌ Failed to migrate database: %v", err)
@@ -54,8 +63,11 @@ func NewService() *Service {
 	if err != nil {
 		log.Fatalf("failed to parse redis url: %v", err)
 	}
-	log.Println("✅ Redis connected successfully")
 	rdb := redis.NewClient(opt)
+	if _, err := rdb.Ping(context.Background()).Result(); err != nil {
+		log.Fatalf("❌ Failed to connect to Redis: %v", err)
+	}
+	log.Println("✅ Connected to Redis")
 
 	// RabbitMQ
 	conn, err := amqp091.Dial(os.Getenv("RABBITMQ_URL"))
@@ -66,6 +78,7 @@ func NewService() *Service {
 	if err != nil {
 		log.Fatalf("Failed to open a channel: %s", err)
 	}
+	log.Println("✅ Connected to RabbitMQ")
 
 	productServiceURL := os.Getenv("PRODUCT_SERVICE")
 	if productServiceURL == "" {
@@ -82,23 +95,44 @@ func NewService() *Service {
 }
 
 func (s *Service) CreateOrder(productID string, quantity int) (*models.Order, error) {
-	resp, err := s.httpClient.Get(s.productServiceURL + "/products/" + productID)
-	if err != nil {
-		return nil, errors.New("failed to contact product-service")
-	}
-	defer resp.Body.Close()
+	ctx := context.Background()
+	cacheKey := "product:" + productID
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, errors.New("product not found")
-	}
-
+	cached, err := s.redisClient.Get(ctx, cacheKey).Result()
 	var product struct {
 		ID    string  `json:"id"`
 		Name  string  `json:"name"`
 		Price float64 `json:"price"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&product); err != nil {
-		return nil, err
+	if err == nil && cached != "" {
+		if err := json.Unmarshal([]byte(cached), &product); err != nil {
+			log.Printf("❌ Failed to unmarshal cached product: %v", err)
+		} else {
+			log.Printf("✅ Cache hit for product %s", productID)
+		}
+	}
+
+	if product.ID == "" {
+		resp, err := s.httpClient.Get(s.productServiceURL + "/products/" + productID)
+		if err != nil {
+			return nil, errors.New("failed to contact product-service")
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, errors.New("product not found")
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&product); err != nil {
+			return nil, err
+		}
+
+		jsonData, _ := json.Marshal(product)
+		if err := s.redisClient.Set(ctx, cacheKey, jsonData, 60*time.Second).Err(); err != nil {
+			log.Printf("⚠️ Failed to cache product %s: %v", productID, err)
+		} else {
+			log.Printf("✅ Cached product %s", productID)
+		}
 	}
 
 	order := &models.Order{
@@ -112,44 +146,11 @@ func (s *Service) CreateOrder(productID string, quantity int) (*models.Order, er
 		return nil, err
 	}
 
-	cacheKey := "orders:product:" + productID
-	s.redisClient.Del(context.Background(), cacheKey)
-
 	if err := s.publishOrderCreatedV2(order); err != nil {
-		log.Printf("Failed to publish order.created: %s", err)
+		log.Printf("⚠️ Failed to publish order.created: %s", err)
 	}
 
 	return order, nil
-}
-
-func (s *Service) publishOrderCreated(order *models.Order) error {
-	fmt.Println("Creating order.created event")
-	q, err := s.rabbitmqChannel.QueueDeclare(
-		"order.created", // name
-		true,            // durable
-		false,           // delete when unused
-		false,           // exclusive
-		false,           // no-wait
-		nil,             // arguments
-	)
-	if err != nil {
-		return err
-	}
-
-	body, err := json.Marshal(order)
-	if err != nil {
-		return err
-	}
-
-	return s.rabbitmqChannel.Publish(
-		"",     // exchange
-		q.Name, // routing key
-		false,  // mandatory
-		false,  // immediate
-		amqp091.Publishing{
-			ContentType: "application/json",
-			Body:        body,
-		})
 }
 
 func (s *Service) publishOrderCreatedV2(order *models.Order) error {

@@ -16,31 +16,35 @@ export class ProductService {
 
   async listenToOrderCreated() {
     this.channel.consume('order.created', async (msg) => {
-      if (msg) {
-        const order = JSON.parse(msg.content.toString());
-        console.log('Order created:', order);
+      if (!msg) return;
 
-        const product = await this.prisma.products.findUnique({
-          where: { id: order.productId },
+      try {
+        const order = JSON.parse(msg.content.toString());
+        console.log('📦 Order created:', order);
+
+        // Atomic update: decrease qty by 1 if still in stock
+        const updatedProduct = await this.prisma.products.updateMany({
+          where: {
+            id: order.productId,
+            qty: { gt: 0 },
+          },
+          data: {
+            qty: { decrement: 1 },
+          },
         });
 
-        if (product) {
-          const newQty = product.qty - 1;
-          await this.prisma.products.update({
-            where: {
-              id: order.productId,
-            },
-            data: {
-              qty: newQty,
-            },
-          });
-
-          if (newQty === 0) {
-            console.log(`Product ${product.name} is out of stock`);
-          }
+        if (updatedProduct.count === 0) {
+          console.log(
+            `⚠️ Product ${order.productId} is out of stock or update failed`,
+          );
+        } else {
+          console.log(`✅ Product ${order.productId} stock decremented`);
         }
 
         this.channel.ack(msg);
+      } catch (err) {
+        console.error('❌ Failed to process order.created:', err);
+        this.channel.ack(msg); // ack anyway to prevent infinite retries
       }
     });
   }
