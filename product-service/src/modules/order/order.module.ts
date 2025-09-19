@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ProductController } from './product.controller';
-import { ProductService } from './product.service';
+import { OrderController } from './order.controller';
+import { OrderService } from './order.service';
 import { PrismaService } from 'src/prisma.service';
 import { RedisModule } from '../redis/redis.module';
 import { RedisProvider } from '../redis/redis.provider';
@@ -8,7 +8,7 @@ import { RabbitMQProvider } from '../rabbitmq/rabbitmq.provider';
 
 @Module({
   imports: [RedisModule],
-  controllers: [ProductController],
-  providers: [ProductService, PrismaService, RedisProvider, RabbitMQProvider],
+  controllers: [OrderController],
+  providers: [OrderService, PrismaService, RedisProvider, RabbitMQProvider],
 })
-export class ProductModule {}
+export class OrderModule {}
