@@ -1,7 +1,12 @@
 package http
 
 import (
+	"log"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"github.com/mhmadamrii/order-service/internal/models"
 	"github.com/mhmadamrii/order-service/internal/orders"
 )
 
@@ -17,7 +22,7 @@ func NewHandlers(orderService *orders.Service) *Handlers {
 
 type createOrderRequest struct {
 	ProductID string `json:"productId"`
-	Quantity  int    `json:"quantity"`
+	Quantity  int    `json:"qty"`
 }
 
 func (h *Handlers) CreateOrder(c *fiber.Ctx) error {
@@ -65,4 +70,26 @@ func (h *Handlers) GetAllProducts(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(products)
+}
+
+func (h *Handlers) CreateOrderMock(c *fiber.Ctx) error {
+	var req createOrderRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid request",
+		})
+	}
+
+	order := &models.Order{
+		ID:         uuid.New().String(),
+		ProductID:  req.ProductID,
+		TotalPrice: 123.45, // fake price
+		Status:     "PENDING",
+		CreatedAt:  time.Now(),
+	}
+
+	log.Printf("📝 Mock inserted order %s (product=%s, qty=%d)", order.ID, req.ProductID, req.Quantity)
+
+	// Respond immediately with 201
+	return c.Status(fiber.StatusCreated).JSON(order)
 }

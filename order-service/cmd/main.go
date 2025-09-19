@@ -25,14 +25,18 @@ func main() {
 	orderService := orders.NewService()
 	orderHandlers := http.NewHandlers(orderService)
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		Prefork: true,
+		AppName: "Order Service",
+	})
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("Order Service is running 🚀")
 	})
 
+	app.Post("/orders-mock", orderHandlers.CreateOrderMock)
 	app.Post("/orders", orderHandlers.CreateOrder)
-	app.Get("/orders/:productId", orderHandlers.GetOrdersByProductID)
+	app.Get("/orders/product/:productId", orderHandlers.GetOrdersByProductID)
 	app.Get("/products", orderHandlers.GetAllProducts)
 
 	log.Printf("Server listening on port %s", port)

@@ -94,7 +94,7 @@ func NewService() *Service {
 	}
 }
 
-func (s *Service) CreateOrder(productID string, quantity int) (*models.Order, error) {
+func (s *Service) CreateOrder(productID string, qty int) (*models.Order, error) {
 	ctx := context.Background()
 	cacheKey := "product:" + productID
 
@@ -138,7 +138,7 @@ func (s *Service) CreateOrder(productID string, quantity int) (*models.Order, er
 	order := &models.Order{
 		ID:         uuid.New().String(),
 		ProductID:  productID,
-		TotalPrice: product.Price * float64(quantity),
+		TotalPrice: product.Price * float64(qty),
 		Status:     "PENDING",
 		CreatedAt:  time.Now(),
 	}
