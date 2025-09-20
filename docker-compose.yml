@@ -26,8 +26,8 @@ services:
       PORT: 8080
       PRODUCT_SERVICE: http://product-service:3000
     depends_on:
-      - db
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     networks:
       - app-network
 

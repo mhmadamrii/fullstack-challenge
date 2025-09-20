@@ -69,7 +69,7 @@ func NewService() *Service {
 	// Redis
 	opt, err := redis.ParseURL(os.Getenv("REDIS_URL"))
 	if err != nil {
-		log.Fatalf("failed to parse redis url: %v", err)
+		log.Fatalf("❌ Failed to parse redis url: %v", err)
 	}
 	rdb := redis.NewClient(opt)
 	if _, err := rdb.Ping(context.Background()).Result(); err != nil {
@@ -78,15 +78,7 @@ func NewService() *Service {
 	log.Println("✅ Connected to Redis")
 
 	// RabbitMQ
-	conn, err := amqp091.Dial(os.Getenv("RABBITMQ_URL"))
-	if err != nil {
-		log.Fatalf("Failed to connect to RabbitMQ: %s", err)
-	}
-	ch, err := conn.Channel()
-	if err != nil {
-		log.Fatalf("Failed to open a channel: %s", err)
-	}
-	log.Println("✅ Connected to RabbitMQ")
+	_, ch := connectRabbitMQ(os.Getenv("RABBITMQ_URL"))
 
 	productServiceURL := os.Getenv("PRODUCT_SERVICE")
 	if productServiceURL == "" {
@@ -268,6 +260,37 @@ func (s *Service) GetAllProducts() ([]*Product, error) {
 	return products, nil
 }
 
+func (s *Service) DeleteAllOrders() error {
+	if err := s.db.Exec("TRUNCATE TABLE orders").Error; err != nil {
+		return err
+	}
+
+	log.Println("✅ All orders deleted")
+	return nil
+}
+
+func connectRabbitMQ(url string) (*amqp091.Connection, *amqp091.Channel) {
+	for {
+		conn, err := amqp091.Dial(url)
+		if err != nil {
+			log.Printf("❌ Failed to connect to RabbitMQ: %v", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		ch, err := conn.Channel()
+		if err != nil {
+			log.Printf("❌ Failed to open channel: %v", err)
+			conn.Close()
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		log.Println("✅ Connected to RabbitMQ")
+		return conn, ch
+	}
+}
+
 func (s *Service) startWorker(id int) {
 	log.Printf("order-worker %d started", id)
 	for job := range s.jobQueue {
@@ -300,13 +323,4 @@ func (s *Service) startWorker(id int) {
 			log.Printf("worker %d: failed to publish order.created for %s: %v", id, job.Order.ID, err)
 		}
 	}
-}
-
-func (s *Service) DeleteAllOrders() error {
-	if err := s.db.Exec("TRUNCATE TABLE orders").Error; err != nil {
-		return err
-	}
-
-	log.Println("✅ All orders deleted")
-	return nil
 }

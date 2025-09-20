@@ -17,7 +17,7 @@ cd fullstack-challenge
 3. Run the stack:
 
 ```bash
-docker-compose up
+docker-compose up --build
 ```
 
 This will spin up the following services:

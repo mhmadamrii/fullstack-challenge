@@ -26,7 +26,7 @@ func main() {
 	orderHandlers := http.NewHandlers(orderService)
 
 	app := fiber.New(fiber.Config{
-		Prefork: true,
+		Prefork: false,
 		AppName: "Order Service",
 	})
 
