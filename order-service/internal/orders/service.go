@@ -20,6 +20,10 @@ import (
 	"github.com/mhmadamrii/order-service/internal/models"
 )
 
+type OrderJob struct {
+	Order *models.Order
+}
+
 type Product struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
@@ -34,6 +38,8 @@ type Service struct {
 	redisClient       *redis.Client
 	rabbitmqChannel   *amqp091.Channel
 	productServiceURL string
+	jobQueue          chan *OrderJob
+	workers           int
 }
 
 func NewService() *Service {
@@ -87,13 +93,28 @@ func NewService() *Service {
 		productServiceURL = "http://localhost:3000"
 	}
 
-	return &Service{
+	s := &Service{
 		db:                db,
-		httpClient:        &http.Client{},
 		redisClient:       rdb,
 		rabbitmqChannel:   ch,
 		productServiceURL: productServiceURL,
+		httpClient: &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConns:        1000,
+				MaxIdleConnsPerHost: 500,
+				IdleConnTimeout:     90 * time.Second,
+			},
+			Timeout: 2 * time.Second,
+		},
 	}
+
+	s.jobQueue = make(chan *OrderJob, 5000)
+	s.workers = 8
+	for i := 0; i < s.workers; i++ {
+		go s.startWorker(i)
+	}
+
+	return s
 }
 
 func (s *Service) CreateOrder(productID string) (*models.Order, error) {
@@ -152,22 +173,21 @@ func (s *Service) CreateOrder(productID string) (*models.Order, error) {
 		CreatedAt:  time.Now(),
 	}
 
-	if err := s.db.Create(order).Error; err != nil {
-		return nil, err
-	}
-
 	if err := s.redisClient.Del(ctx, cacheKeyOrdersByProductID).Err(); err != nil {
 		log.Printf("⚠️ Failed to invalidate orders cache for product %s: %v", productID, err)
 	} else {
 		log.Printf("🗑️ Invalidated orders cache for product %s", productID)
 	}
 
-	// Step 5: Publish event
-	if err := s.publishOrderCreatedV2(order); err != nil {
-		log.Printf("⚠️ Failed to publish order.created: %s", err)
+	// try to enqueue job (non-blocking)
+	select {
+	case s.jobQueue <- &OrderJob{Order: order}:
+		// queued successfully — return immediately
+		return order, nil
+	default:
+		// queue full — backpressure
+		return nil, errors.New("server overloaded, try again")
 	}
-
-	return order, nil
 }
 
 func (s *Service) publishOrderCreatedV2(order *models.Order) error {
@@ -258,4 +278,42 @@ func (s *Service) GetAllProducts() ([]*Product, error) {
 	}
 
 	return products, nil
+}
+
+func (s *Service) startWorker(id int) {
+	log.Printf("order-worker %d started", id)
+	for job := range s.jobQueue {
+		if job == nil || job.Order == nil {
+			continue
+		}
+		ctx := context.Background()
+
+		// Persist order (simple retry loop)
+		var err error
+		for attempt := 1; attempt <= 3; attempt++ {
+			err = s.db.Create(job.Order).Error
+			if err == nil {
+				break
+			}
+			log.Printf("worker %d: failed to persist order %s (attempt %d): %v", id, job.Order.ID, attempt, err)
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+		if err != nil {
+			// if still failing, log and continue (optionally push to DLQ)
+			log.Printf("worker %d: permanent failure persisting order %s: %v", id, job.Order.ID, err)
+			continue
+		}
+
+		// Invalidate orders cache for this product
+		cacheKey := "orders:product:" + job.Order.ProductID
+		if err := s.redisClient.Del(ctx, cacheKey).Err(); err != nil {
+			log.Printf("worker %d: failed to invalidate orders cache %s: %v", id, cacheKey, err)
+		}
+
+		// Publish event (best-effort)
+		if err := s.publishOrderCreatedV2(job.Order); err != nil {
+			log.Printf("worker %d: failed to publish order.created for %s: %v", id, job.Order.ID, err)
+			// could retry or push to a DLQ
+		}
+	}
 }
