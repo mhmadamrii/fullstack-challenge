@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { CreateProductDto } from './product.dto';
-import { PrismaService } from 'src/prisma.service';
+import { PrismaService } from '../../prisma.service';
 import type { RedisClientType } from 'redis';
 import * as amqp from 'amqplib';
 
@@ -22,15 +22,9 @@ export class ProductService {
         const order = JSON.parse(msg.content.toString());
         console.log('📦 Order created:', order);
 
-        // Atomic update: decrease qty by 1 if still in stock
         const updatedProduct = await this.prisma.products.updateMany({
-          where: {
-            id: order.productId,
-            qty: { gt: 0 },
-          },
-          data: {
-            qty: { decrement: 1 },
-          },
+          where: { id: order.productId, qty: { gt: 0 } },
+          data: { qty: { decrement: 1 } },
         });
 
         if (updatedProduct.count === 0) {
@@ -39,6 +33,9 @@ export class ProductService {
           );
         } else {
           console.log(`✅ Product ${order.productId} stock decremented`);
+
+          await this.redis.del(`product_${order.productId}`);
+          await this.redis.del('products');
         }
 
         this.channel.ack(msg);
@@ -73,10 +70,12 @@ export class ProductService {
 
   async getProductById(id: string) {
     const cachedProduct = await this.redis.get(`product_${id}`);
+    console.log('cachedProduct', cachedProduct);
     if (cachedProduct) {
       return JSON.parse(cachedProduct);
     }
     const product = await this.prisma.products.findUnique({ where: { id } });
+    console.log('product', product);
     await this.redis.set(`product_${id}`, JSON.stringify(product));
     return product;
   }

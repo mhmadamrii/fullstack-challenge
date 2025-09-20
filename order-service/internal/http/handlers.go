@@ -22,7 +22,6 @@ func NewHandlers(orderService *orders.Service) *Handlers {
 
 type createOrderRequest struct {
 	ProductID string `json:"productId"`
-	Quantity  int    `json:"qty"`
 }
 
 func (h *Handlers) CreateOrder(c *fiber.Ctx) error {
@@ -33,7 +32,7 @@ func (h *Handlers) CreateOrder(c *fiber.Ctx) error {
 		})
 	}
 
-	order, err := h.orderService.CreateOrder(req.ProductID, req.Quantity)
+	order, err := h.orderService.CreateOrder(req.ProductID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
@@ -83,13 +82,12 @@ func (h *Handlers) CreateOrderMock(c *fiber.Ctx) error {
 	order := &models.Order{
 		ID:         uuid.New().String(),
 		ProductID:  req.ProductID,
-		TotalPrice: 123.45, // fake price
+		TotalPrice: 123.45,
 		Status:     "PENDING",
 		CreatedAt:  time.Now(),
 	}
 
-	log.Printf("📝 Mock inserted order %s (product=%s, qty=%d)", order.ID, req.ProductID, req.Quantity)
+	log.Printf("📝 Mock inserted order %s (product=%s)", order.ID, req.ProductID)
 
-	// Respond immediately with 201
 	return c.Status(fiber.StatusCreated).JSON(order)
 }

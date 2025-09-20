@@ -21,9 +21,11 @@ import (
 )
 
 type Product struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Price int    `json:"price"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Price     float64   `json:"price"`
+	Qty       int       `json:"qty"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type Service struct {
@@ -94,24 +96,27 @@ func NewService() *Service {
 	}
 }
 
-func (s *Service) CreateOrder(productID string, qty int) (*models.Order, error) {
+func (s *Service) CreateOrder(productID string) (*models.Order, error) {
 	ctx := context.Background()
 	cacheKey := "product:" + productID
+	cacheKeyOrdersByProductID := "orders:product:" + productID
 
-	cached, err := s.redisClient.Get(ctx, cacheKey).Result()
+	// product struct now includes Qty
 	var product struct {
 		ID    string  `json:"id"`
 		Name  string  `json:"name"`
 		Price float64 `json:"price"`
+		Qty   int     `json:"qty"`
 	}
-	if err == nil && cached != "" {
-		if err := json.Unmarshal([]byte(cached), &product); err != nil {
-			log.Printf("❌ Failed to unmarshal cached product: %v", err)
-		} else {
-			log.Printf("✅ Cache hit for product %s", productID)
+
+	// Step 1: Try cache
+	if cached, err := s.redisClient.Get(ctx, cacheKey).Result(); err == nil && cached != "" {
+		if err := json.Unmarshal([]byte(cached), &product); err == nil {
+			log.Printf("✅ Local cache hit for product %s", productID)
 		}
 	}
 
+	// Step 2: Fallback to product-service
 	if product.ID == "" {
 		resp, err := s.httpClient.Get(s.productServiceURL + "/products/" + productID)
 		if err != nil {
@@ -127,25 +132,37 @@ func (s *Service) CreateOrder(productID string, qty int) (*models.Order, error) 
 			return nil, err
 		}
 
-		jsonData, _ := json.Marshal(product)
-		if err := s.redisClient.Set(ctx, cacheKey, jsonData, 60*time.Second).Err(); err != nil {
-			log.Printf("⚠️ Failed to cache product %s: %v", productID, err)
-		} else {
-			log.Printf("✅ Cached product %s", productID)
+		// Cache product locally with TTL
+		if jsonData, err := json.Marshal(product); err == nil {
+			_ = s.redisClient.Set(ctx, cacheKey, jsonData, 60*time.Second).Err()
 		}
 	}
 
+	// Step 3: Validate stock
+	if product.Qty <= 0 {
+		return nil, errors.New("product is out of stock")
+	}
+
+	// Step 4: Create order
 	order := &models.Order{
 		ID:         uuid.New().String(),
 		ProductID:  productID,
-		TotalPrice: product.Price * float64(qty),
+		TotalPrice: product.Price,
 		Status:     "PENDING",
 		CreatedAt:  time.Now(),
 	}
+
 	if err := s.db.Create(order).Error; err != nil {
 		return nil, err
 	}
 
+	if err := s.redisClient.Del(ctx, cacheKeyOrdersByProductID).Err(); err != nil {
+		log.Printf("⚠️ Failed to invalidate orders cache for product %s: %v", productID, err)
+	} else {
+		log.Printf("🗑️ Invalidated orders cache for product %s", productID)
+	}
+
+	// Step 5: Publish event
 	if err := s.publishOrderCreatedV2(order); err != nil {
 		log.Printf("⚠️ Failed to publish order.created: %s", err)
 	}
@@ -154,11 +171,11 @@ func (s *Service) CreateOrder(productID string, qty int) (*models.Order, error) 
 }
 
 func (s *Service) publishOrderCreatedV2(order *models.Order) error {
-	fmt.Println("Attempting to publish order.created event")
 	body, err := json.Marshal(order)
 	if err != nil {
 		return err
 	}
+	fmt.Println("Attempting to publish order.created event")
 
 	return s.rabbitmqChannel.Publish(
 		"events",        // exchange
@@ -173,27 +190,34 @@ func (s *Service) publishOrderCreatedV2(order *models.Order) error {
 }
 
 func (s *Service) GetOrdersByProductID(productID string) ([]*models.Order, error) {
-	cacheKey := "orders:product:" + productID
 	ctx := context.Background()
+	cacheKey := "orders:product:" + productID
 
-	cachedOrders, err := s.redisClient.Get(ctx, cacheKey).Result()
-	if err == nil {
+	// Step 1: Try cache
+	if cachedOrders, err := s.redisClient.Get(ctx, cacheKey).Result(); err == nil && cachedOrders != "" {
 		var orders []*models.Order
 		if err := json.Unmarshal([]byte(cachedOrders), &orders); err == nil {
-			log.Println("✅ Cache hit for orders:product:" + productID)
+			log.Printf("✅ Cache hit for orders of product %s", productID)
 			return orders, nil
 		}
+		log.Printf("⚠️ Failed to unmarshal cached orders for product %s: %v", productID, err)
+	} else {
+		log.Printf("🗑️ Cache miss for orders of product %s", productID)
 	}
 
-	log.Println("🗑️ Cache miss for orders:product:" + productID)
+	// Step 2: Fallback → DB
 	var orders []*models.Order
-	if err := s.db.Where("\"productId\" = ?", productID).Find(&orders).Error; err != nil {
+	if err := s.db.Where("product_id = ?", productID).Find(&orders).Error; err != nil {
 		return nil, err
 	}
 
-	ordersJSON, err := json.Marshal(orders)
-	if err == nil {
-		s.redisClient.Set(ctx, cacheKey, ordersJSON, 10*time.Minute)
+	// Step 3: Cache DB result
+	if jsonData, err := json.Marshal(orders); err == nil {
+		if err := s.redisClient.Set(ctx, cacheKey, jsonData, 10*time.Minute).Err(); err != nil {
+			log.Printf("⚠️ Failed to cache orders for product %s: %v", productID, err)
+		} else {
+			log.Printf("✅ Cached orders for product %s", productID)
+		}
 	}
 
 	return orders, nil
