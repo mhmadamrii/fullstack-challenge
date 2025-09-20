@@ -35,7 +35,14 @@ This project is a microservices-based application that consists of two services:
 - **`product-service`**: A NestJS service that is responsible for managing products. It exposes a REST API for creating, retrieving, updating, and deleting products. It also uses Redis for caching and RabbitMQ for asynchronous communication with the `order-service`.
 - **`order-service`**: A Go service that is responsible for managing orders. It exposes a REST API for creating and retrieving orders. It communicates with the `product-service` via RabbitMQ to update the product stock when an order is created.
 
-The services are containerized using Docker and can be run locally using Docker Compose.
+## Available Endpoints
+
+- `POST /products` → create product **(product service)**
+- `GET /products/:id` → fetch product cached using redis **(product service)**
+- `GET /orders` → get all orders **(product service)**
+- `POST /orders` → create order for existing product **(order service)**
+- `GET /orders/product/:productId` → fetch product’s orders (cached) **(order service)**
+- `DELETE /orders` → delete all created orders **(order service)**
 
 ## API Examples
 
@@ -50,7 +57,13 @@ curl http://localhost:3000/products
 - **Create a new product:**
 
 ```bash
-curl -X POST -H "Content-Type: application/json" -d '{"name": "Product 1", "price": 10.99, "qty": 100}' http://localhost:3000/products
+curl -X POST -H "Content-Type: application/json" -d '{"name": "Macbook Pro M3", "price": 2000, "qty": 100}' http://localhost:3000/products
+```
+
+- **Get product by id:**
+
+```bash
+curl http://localhost:3000/products/<product-id>
 ```
 
 ### Order Service
@@ -67,11 +80,23 @@ curl http://localhost:8080/orders
 curl -X POST -H "Content-Type: application/json" -d '{"productId": "<product-id>"}' http://localhost:8080/orders
 ```
 
+- **Get orders by product id:**
+
+```bash
+curl http://localhost:8080/orders/product/<product-id>
+```
+
 ## Testing with k6
 
-Creating order took around ~800RPS
+Creating order took around ~900RPS
 
 ![alt text](https://oyluendsrr.ufs.sh/f/heCK4TZGuZCFqIcXv2r8hsLqQr6XRyHSANKdDvj1I2YlfPoi)
+
+Before running the test, make sure you have:
+
+- k6 installed locally.
+- A product available in the `products` table.
+- Increased the product quantity to a high number, for instance, 50000.
 
 ## How to run the tests locally?
 

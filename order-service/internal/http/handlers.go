@@ -91,3 +91,13 @@ func (h *Handlers) CreateOrderMock(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusCreated).JSON(order)
 }
+
+func (h *Handlers) DeleteAllOrders(c *fiber.Ctx) error {
+	if err := h.orderService.DeleteAllOrders(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
+}

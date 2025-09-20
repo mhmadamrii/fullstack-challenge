@@ -301,3 +301,12 @@ func (s *Service) startWorker(id int) {
 		}
 	}
 }
+
+func (s *Service) DeleteAllOrders() error {
+	if err := s.db.Exec("TRUNCATE TABLE orders").Error; err != nil {
+		return err
+	}
+
+	log.Println("✅ All orders deleted")
+	return nil
+}

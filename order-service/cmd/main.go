@@ -38,6 +38,7 @@ func main() {
 	app.Post("/orders", orderHandlers.CreateOrder)
 	app.Get("/orders/product/:productId", orderHandlers.GetOrdersByProductID)
 	app.Get("/products", orderHandlers.GetAllProducts)
+	app.Delete("/orders", orderHandlers.DeleteAllOrders)
 
 	log.Printf("Server listening on port %s", port)
 	log.Fatal(app.Listen(fmt.Sprintf(":%s", port)))
