@@ -70,13 +70,13 @@ export class ProductService {
 
   async getProductById(id: string) {
     const cachedProduct = await this.redis.get(`product_${id}`);
-    console.log('cachedProduct', cachedProduct);
     if (cachedProduct) {
+      console.log(`✅ Cached product found for id:${id}`);
       return JSON.parse(cachedProduct);
     }
     const product = await this.prisma.products.findUnique({ where: { id } });
-    console.log('product', product);
     await this.redis.set(`product_${id}`, JSON.stringify(product));
+    console.log(`🗑️ Cached product missed for id:${id}, set new cache`);
     return product;
   }
 

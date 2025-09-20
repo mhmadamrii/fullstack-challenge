@@ -122,7 +122,6 @@ func (s *Service) CreateOrder(productID string) (*models.Order, error) {
 	cacheKey := "product:" + productID
 	cacheKeyOrdersByProductID := "orders:product:" + productID
 
-	// product struct now includes Qty
 	var product struct {
 		ID    string  `json:"id"`
 		Name  string  `json:"name"`
@@ -130,14 +129,12 @@ func (s *Service) CreateOrder(productID string) (*models.Order, error) {
 		Qty   int     `json:"qty"`
 	}
 
-	// Step 1: Try cache
 	if cached, err := s.redisClient.Get(ctx, cacheKey).Result(); err == nil && cached != "" {
 		if err := json.Unmarshal([]byte(cached), &product); err == nil {
 			log.Printf("✅ Local cache hit for product %s", productID)
 		}
 	}
 
-	// Step 2: Fallback to product-service
 	if product.ID == "" {
 		resp, err := s.httpClient.Get(s.productServiceURL + "/products/" + productID)
 		if err != nil {
@@ -153,18 +150,15 @@ func (s *Service) CreateOrder(productID string) (*models.Order, error) {
 			return nil, err
 		}
 
-		// Cache product locally with TTL
 		if jsonData, err := json.Marshal(product); err == nil {
 			_ = s.redisClient.Set(ctx, cacheKey, jsonData, 60*time.Second).Err()
 		}
 	}
 
-	// Step 3: Validate stock
 	if product.Qty <= 0 {
 		return nil, errors.New("product is out of stock")
 	}
 
-	// Step 4: Create order
 	order := &models.Order{
 		ID:         uuid.New().String(),
 		ProductID:  productID,
@@ -179,13 +173,10 @@ func (s *Service) CreateOrder(productID string) (*models.Order, error) {
 		log.Printf("🗑️ Invalidated orders cache for product %s", productID)
 	}
 
-	// try to enqueue job (non-blocking)
 	select {
 	case s.jobQueue <- &OrderJob{Order: order}:
-		// queued successfully — return immediately
 		return order, nil
 	default:
-		// queue full — backpressure
 		return nil, errors.New("server overloaded, try again")
 	}
 }
@@ -213,7 +204,6 @@ func (s *Service) GetOrdersByProductID(productID string) ([]*models.Order, error
 	ctx := context.Background()
 	cacheKey := "orders:product:" + productID
 
-	// Step 1: Try cache
 	if cachedOrders, err := s.redisClient.Get(ctx, cacheKey).Result(); err == nil && cachedOrders != "" {
 		var orders []*models.Order
 		if err := json.Unmarshal([]byte(cachedOrders), &orders); err == nil {
@@ -225,13 +215,11 @@ func (s *Service) GetOrdersByProductID(productID string) ([]*models.Order, error
 		log.Printf("🗑️ Cache miss for orders of product %s", productID)
 	}
 
-	// Step 2: Fallback → DB
 	var orders []*models.Order
-	if err := s.db.Where("product_id = ?", productID).Find(&orders).Error; err != nil {
+	if err := s.db.Where("\"productId\" = ?", productID).Find(&orders).Error; err != nil {
 		return nil, err
 	}
 
-	// Step 3: Cache DB result
 	if jsonData, err := json.Marshal(orders); err == nil {
 		if err := s.redisClient.Set(ctx, cacheKey, jsonData, 10*time.Minute).Err(); err != nil {
 			log.Printf("⚠️ Failed to cache orders for product %s: %v", productID, err)
@@ -299,21 +287,17 @@ func (s *Service) startWorker(id int) {
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}
 		if err != nil {
-			// if still failing, log and continue (optionally push to DLQ)
 			log.Printf("worker %d: permanent failure persisting order %s: %v", id, job.Order.ID, err)
 			continue
 		}
 
-		// Invalidate orders cache for this product
 		cacheKey := "orders:product:" + job.Order.ProductID
 		if err := s.redisClient.Del(ctx, cacheKey).Err(); err != nil {
 			log.Printf("worker %d: failed to invalidate orders cache %s: %v", id, cacheKey, err)
 		}
 
-		// Publish event (best-effort)
 		if err := s.publishOrderCreatedV2(job.Order); err != nil {
 			log.Printf("worker %d: failed to publish order.created for %s: %v", id, job.Order.ID, err)
-			// could retry or push to a DLQ
 		}
 	}
 }
