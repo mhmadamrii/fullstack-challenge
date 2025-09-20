@@ -68,12 +68,6 @@ curl http://localhost:3000/products/<product-id>
 
 ### Order Service
 
-- **Get all orders:**
-
-```bash
-curl http://localhost:8080/orders
-```
-
 - **Create a new order:**
 
 ```bash
