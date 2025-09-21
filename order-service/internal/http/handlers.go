@@ -33,12 +33,10 @@ func (h *Handlers) CreateOrder(c *fiber.Ctx) error {
 	}
 
 	order, err := h.orderService.CreateOrder(req.ProductID)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
-	}
 
+	if err != nil {
+		return err
+	}
 	return c.Status(fiber.StatusCreated).JSON(order)
 }
 

@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
+
 	"github.com/google/uuid"
 	"github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
@@ -134,8 +136,13 @@ func (s *Service) CreateOrder(productID string) (*models.Order, error) {
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			return nil, errors.New("product not found")
+		if resp.StatusCode == http.StatusNotFound {
+			println(http.StatusNotFound)
+			return nil, &fiber.Error{Code: http.StatusNotFound, Message: "product not found"}
+		}
+
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fiber.NewError(fiber.StatusNotFound, "product not found")
 		}
 
 		if err := json.NewDecoder(resp.Body).Decode(&product); err != nil {

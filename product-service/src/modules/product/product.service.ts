@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { CreateProductDto } from './product.dto';
 import { PrismaService } from '../../prisma.service';
 import type { RedisClientType } from 'redis';
@@ -75,6 +75,9 @@ export class ProductService {
       return JSON.parse(cachedProduct);
     }
     const product = await this.prisma.products.findUnique({ where: { id } });
+    if (!product) {
+      throw new NotFoundException(`Product with id ${id} not found`);
+    }
     await this.redis.set(`product_${id}`, JSON.stringify(product));
     console.log(`🗑️ Cached product missed for id:${id}, set new cache`);
     return product;
